@@ -54,16 +54,14 @@ mod app {
         let sda = port0.p0_25.into_floating_input().degrade();
         let i2c_pins = twim::Pins {scl, sda};
         let i2c = Twim::new(peripherals.TWIM0, i2c_pins, twim::Frequency::K100);
-
-        let mut display: GraphicsMode<_> = Builder::new().connect_i2c(i2c).into();
+        let display_size = DisplaySize::Display64x128;
+        let mut display: GraphicsMode<_> = Builder::new().with_size(display_size).connect_i2c(i2c).into();
 
         rprintln!("init display...\n");
         display.init().unwrap();
-        display.clear();
+        rprintln!("write pixel...\n");
+        display.set_pixel(1,1,1);
         display.flush().unwrap();
-//        rprintln!("write pixel...\n");
-//        display.set_pixel(1,1,1);
-//        display.flush().unwrap();
 
         let mut led_pin = port0.p0_17.into_push_pull_output(Level::Low);
         led_pin.set_high().unwrap();
