@@ -10,18 +10,21 @@ mod app {
 
     use nrf52832_hal as hal;
     use nrf52832_hal::{
-        pac::{TIMER0, TWIM0},
+        pac::{TIMER0, TWIM0, SPI1},
         gpio::{
             Level,
             Output,
             PushPull,
         },
-        twim::{self, Twim},
+        twim::{self, Twim},     // "Two-wire interface master"
+        spi::{self, Spi},     // "Serial peripheral interface"
     };
     use embedded_hal::digital::v2::OutputPin;
     use rtt_target::{rtt_init_print, rprintln};
     use super::monotonic_timer0::{MonoTimer, ExtU32};
     use sh1107::{prelude::*, Builder};
+    use smart_leds::{SmartLedsWrite, RGB8};
+    use ws2812_spi::{MODE as NeoPixel_SPI_MODE, Ws2812};
 
     #[monotonic(binds = TIMER0, default = true)]
     type MyMono = MonoTimer<TIMER0>;
@@ -35,6 +38,7 @@ mod app {
         led: hal::gpio::p0::P0_17<Output<PushPull>>,
         state: bool,
         display: GraphicsMode<I2cInterface<hal::twim::Twim<TWIM0>>>,
+        neopixel: Ws2812<hal::spi::Spi<SPI1>>,
     }
 
     #[init]
@@ -48,14 +52,28 @@ mod app {
 
         let mono = MonoTimer::new(peripherals.TIMER0);
 
+        // setup GPIO
         let port0 = hal::gpio::p0::Parts::new(peripherals.P0);
-
+        // setup I2C and OLED display
         let scl = port0.p0_26.into_floating_input().degrade();
         let sda = port0.p0_25.into_floating_input().degrade();
         let i2c_pins = twim::Pins {scl, sda};
         let i2c = Twim::new(peripherals.TWIM0, i2c_pins, twim::Frequency::K100);
         let display_size = DisplaySize::Display64x128;
         let mut display: GraphicsMode<_> = Builder::new().with_size(display_size).connect_i2c(i2c).into();
+        // setup SPI and neopixel
+        let sck = port0.p0_12.into_push_pull_output(Level::Low).degrade();
+        let mosi = port0.p0_13.into_push_pull_output(Level::Low).degrade();
+        let spi_pins = spi::Pins {sck, mosi: Some(mosi), miso: None};
+        let spi = Spi::new(
+            peripherals.SPI1,
+            spi_pins,
+            spi::Frequency::M2,
+            NeoPixel_SPI_MODE
+        );
+        let mut neopixel = Ws2812::new(spi);
+        let pixels = [RGB8::new(0, 0, 0)];
+        neopixel.write(pixels.iter().cloned());
 
         rprintln!("init display...\n");
         display.init().unwrap();
@@ -78,6 +96,7 @@ mod app {
                 led: led_pin,
                 state: false,
                 display: display,
+                neopixel: neopixel,
              },
              init::Monotonics(mono)
         )
