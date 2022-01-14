@@ -3,7 +3,7 @@
 
 // Debugging imports
 use panic_halt as _;
-use rtt_target::{rtt_init_print, rprintln};
+//use rtt_target::{rtt_init_print, //rprintln};
 
 // System imports
 use cortex_m::prelude::*;
@@ -36,7 +36,7 @@ use embedded_graphics::{
 
 #[entry]
 fn start() -> ! {
-    rtt_init_print!();
+    //rtt_init_print!();
 
     let mut peripherals = pac::Peripherals::take().unwrap();
     let mut core = pac::CorePeripherals::take().unwrap();
@@ -60,9 +60,9 @@ fn start() -> ! {
         .connect_i2c(i2c)
         .into();
 
-    rprintln!("init display");
+    //rprintln!("init display");
     let (DISPLAY_WIDTH, DISPLAY_HEIGHT) = display.get_dimensions();
-    rprintln!("display width: {}, display height: {}", DISPLAY_WIDTH, DISPLAY_HEIGHT);
+    //rprintln!("display width: {}, display height: {}", DISPLAY_WIDTH, DISPLAY_HEIGHT);
     display.init();
 
     let style = MonoTextStyle::new(&FONT_6X9, BinaryColor::On);
@@ -74,7 +74,7 @@ fn start() -> ! {
     timer.delay_ms(2000_u32);
     display.clear();
 
-    rprintln!("loop start");
+    //rprintln!("loop start");
     const DELAY_MS: u32 = 1;
     let mut loop_counter = (0..10).cycle();
     loop {

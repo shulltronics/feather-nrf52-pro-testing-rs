@@ -2,7 +2,8 @@
 #![no_main]
 
 use rtic::app;
-use panic_rtt_target as _;
+//use panic_rtt_target as _;
+use panic_halt as _;
 mod monotonic_timer0;
 
 #[app(device = nrf52832_hal::pac, peripherals = true, dispatchers = [RTC2])]
@@ -59,13 +60,13 @@ mod app {
 
     #[init]
     fn init(cx: init::Context) -> (DataCommon, DataLocal, init::Monotonics) {
-        rtt_init_print!();
-        rprintln!("entered init...");
+        //rtt_init_print!();
+        //rprintln!("entered init...");
 
         let peripherals: nrf52832_hal::pac::Peripherals = cx.device;
         let core = cx.core;
         let _clocks = Clocks::new(peripherals.CLOCK).enable_ext_hfosc();
-        rprintln!("got peripherals");
+        //rprintln!("got peripherals");
 
         let mono = MonoTimer::new(peripherals.TIMER0);
 
@@ -77,13 +78,13 @@ mod app {
         let mut pwm = Pwm::new(peripherals.PWM1);
         // get metrics
         let max_duty = pwm.get_max_duty();
-        rprintln!("pwm max duty: {}", max_duty);
+        //rprintln!("pwm max duty: {}", max_duty);
 
         pwm.set_period(Hertz(500_u32))
             .set_output_pin(pwm::Channel::C0, pwm_pin);
         pwm.enable();
         pwm.set_duty_on(pwm::Channel::C0, 0);
-        rprintln!("pwm init duty cycle: {}", pwm.duty_on(pwm::Channel::C0));
+        //rprintln!("pwm init duty cycle: {}", pwm.duty_on(pwm::Channel::C0));
 
         // setup I2C and OLED display
         let scl = port0.p0_26.into_floating_input().degrade();
@@ -112,7 +113,7 @@ mod app {
         neopixel.write(pixels.iter().cloned());
         */
 
-        rprintln!("init display...\n");
+        //rprintln!("init display...\n");
         display.init().unwrap();
         // define header text
         let style = MonoTextStyle::new(&FONT_6X9, BinaryColor::On);
@@ -127,10 +128,10 @@ mod app {
         let mut led_pin = port0.p0_19.into_push_pull_output(Level::Low);
         led_pin.set_high().unwrap();
 
-        rprintln!("Spawning blink task...\n");
+        //rprintln!("Spawning blink task...\n");
         blink::spawn().unwrap();
 
-        rprintln!("Spawning pwm_change task...\n");
+        //rprintln!("Spawning pwm_change task...\n");
         pwm_change::spawn().unwrap();
 
         // return resources
@@ -151,14 +152,14 @@ mod app {
 
     #[task(local = [led, state])]
     fn blink(cx: blink::Context) {
-        //rprintln!("blink!");
+        ////rprintln!("blink!");
         let v = !*cx.local.state;
         match v {
             true =>  cx.local.led.set_high().unwrap(),
             false => cx.local.led.set_low().unwrap(),
         }
         *cx.local.state = v;
-        //rprintln!("Value of cx.local.state: {}", cx.local.state);
+        ////rprintln!("Value of cx.local.state: {}", cx.local.state);
         blink::spawn_after(1_000_000.micros()).unwrap();
     }
 
@@ -181,19 +182,19 @@ mod app {
         *cx.local.val = val;
         *cx.local.dir = dir;
         pwm.set_duty_on(pwm::Channel::C0, val);
-        //rprintln!("pwm val:      {}", val);
-        //rprintln!("pwm duty on:  {}", pwm.duty_on(pwm::Channel::C0));
-        //rprintln!("pwm duty off: {}", pwm.duty_off(pwm::Channel::C0));
+        ////rprintln!("pwm val:      {}", val);
+        ////rprintln!("pwm duty on:  {}", pwm.duty_on(pwm::Channel::C0));
+        ////rprintln!("pwm duty off: {}", pwm.duty_off(pwm::Channel::C0));
         pwm_change::spawn_after(700.micros()).unwrap();
     }
 
     #[task(local = [display])]
     fn screen_clear(cx: screen_clear::Context) {
-        rprintln!("screen_clear!");
+        //rprintln!("screen_clear!");
         let mut d = cx.local.display;
         d.clear();
         d.flush().unwrap();
-        rprintln!("leaving screen_clear..");
+        //rprintln!("leaving screen_clear..");
     }
 
 }
