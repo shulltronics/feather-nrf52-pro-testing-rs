@@ -2,7 +2,7 @@
 #![no_main]
 
 use rtic::app;
-use panic_halt as _;
+use panic_rtt_target as _;
 mod monotonic_timer0;
 
 #[app(device = nrf52832_hal::pac, peripherals = true, dispatchers = [RTC2])]
@@ -10,7 +10,7 @@ mod app {
 
     use nrf52832_hal as hal;
     use nrf52832_hal::{
-        pac::{TIMER0, TWIM0, PWM0},
+        pac::{TIMER0, TWIM0, PWM1},
         gpio::{
             Level,
             Output,
@@ -22,7 +22,10 @@ mod app {
         pwm::{self, Pwm},       // Pulse Width Modulation interface"
         time::{Hertz},
     };
-    use embedded_hal::digital::v2::OutputPin;
+    use embedded_hal::{
+        Pwm as EHPwm,
+        digital::v2::OutputPin,
+    };
     use rtt_target::{rtt_init_print, rprintln};
     use super::monotonic_timer0::{MonoTimer, ExtU32};
     use sh1107::{prelude::*, Builder};
@@ -45,12 +48,13 @@ mod app {
 
     #[local]
     struct DataLocal {
-        led: hal::gpio::p0::P0_17<Output<PushPull>>,
+        led: hal::gpio::p0::P0_19<Output<PushPull>>,
         state: bool,
         display: GraphicsMode<I2cInterface<hal::twim::Twim<TWIM0>>>,
         //neopixel: Ws2812<hal::spi::Spi<SPI1>>,
-        pwm: Pwm<PWM0>,
+        pwm: Pwm<PWM1>,
         val: u16,
+        dir: bool,
     }
 
     #[init]
@@ -69,13 +73,17 @@ mod app {
         let port0 = hal::gpio::p0::Parts::new(peripherals.P0);
 
         // setup PWM
-        let pwm_pin = port0.p0_19.into_push_pull_output(Level::Low).degrade();
-        let mut pwm = Pwm::new(peripherals.PWM0);
-        pwm.set_period(Hertz(5000_u32))
-            .set_output_pin(pwm::Channel::C0, pwm_pin)
-            .set_duty_off(pwm::Channel::C0, 0x7FFF);
+        let pwm_pin = port0.p0_17.into_push_pull_output(Level::Low).degrade();
+        let mut pwm = Pwm::new(peripherals.PWM1);
+        // get metrics
+        let max_duty = pwm.get_max_duty();
+        rprintln!("pwm max duty: {}", max_duty);
+
+        pwm.set_period(Hertz(500_u32))
+            .set_output_pin(pwm::Channel::C0, pwm_pin);
         pwm.enable();
-        //rprintln!("pwm max duty: {}", pwm.max_duty());
+        pwm.set_duty_on(pwm::Channel::C0, 0);
+        rprintln!("pwm init duty cycle: {}", pwm.duty_on(pwm::Channel::C0));
 
         // setup I2C and OLED display
         let scl = port0.p0_26.into_floating_input().degrade();
@@ -116,11 +124,14 @@ mod app {
         text.draw(&mut display);
         display.flush().unwrap();
 
-        let mut led_pin = port0.p0_17.into_push_pull_output(Level::Low);
+        let mut led_pin = port0.p0_19.into_push_pull_output(Level::Low);
         led_pin.set_high().unwrap();
 
         rprintln!("Spawning blink task...\n");
         blink::spawn().unwrap();
+
+        rprintln!("Spawning pwm_change task...\n");
+        pwm_change::spawn().unwrap();
 
         // return resources
         (
@@ -131,7 +142,8 @@ mod app {
                 display: display,
                 //neopixel: neopixel,
                 pwm: pwm,
-                val: 0
+                val: 0,
+                dir: true
              },
              init::Monotonics(mono)
         )
@@ -139,23 +151,40 @@ mod app {
 
     #[task(local = [led, state])]
     fn blink(cx: blink::Context) {
-        rprintln!("blink!");
+        //rprintln!("blink!");
         let v = !*cx.local.state;
         match v {
             true =>  cx.local.led.set_high().unwrap(),
             false => cx.local.led.set_low().unwrap(),
         }
         *cx.local.state = v;
-        rprintln!("Value of cx.local.state: {}", cx.local.state);
+        //rprintln!("Value of cx.local.state: {}", cx.local.state);
         blink::spawn_after(1_000_000.micros()).unwrap();
     }
 
-    #[task(local = [pwm, val])]
+    #[task(local = [pwm, val, dir])]
     fn pwm_change(cx: pwm_change::Context) {
-        let mut val = *cx.local.val;
-        val = val + 0xF;
         let pwm = cx.local.pwm;
-        pwm.set_duty_off(pwm::Channel::C0, val);
+        // get current val and check it for out-of-bounds
+        let mut val = *cx.local.val;
+        let mut dir = *cx.local.dir;
+        if val >= pwm.get_max_duty() {
+            dir = false;
+        } else if val <= 0 {
+            dir = true;
+        }
+        let delta: i16 = match dir {
+            true  =>  0xF,
+            false => -0xF,
+        };
+        val = ((val as i16) + delta) as u16;
+        *cx.local.val = val;
+        *cx.local.dir = dir;
+        pwm.set_duty_on(pwm::Channel::C0, val);
+        //rprintln!("pwm val:      {}", val);
+        //rprintln!("pwm duty on:  {}", pwm.duty_on(pwm::Channel::C0));
+        //rprintln!("pwm duty off: {}", pwm.duty_off(pwm::Channel::C0));
+        pwm_change::spawn_after(700.micros()).unwrap();
     }
 
     #[task(local = [display])]
